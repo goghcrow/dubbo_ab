@@ -24,13 +24,13 @@
 
 static struct dubbo_client *g_cli;
 
-// fixme 打印进度
-// fixme ok ko 统计
 struct dubbo_client
 {
     struct aeEventLoop *el;
     struct dubbo_args *args;
     union sockaddr_all addr;
+    long timeout_ms;
+    long long timerid;
 
     struct buffer *rcv_buf;
     struct buffer *snd_buf;
@@ -59,6 +59,7 @@ static bool cli_start(struct dubbo_client *cli);
 static void cli_end(struct dubbo_client *cli);
 
 static bool cli_decode_resp(struct dubbo_client *cli);
+static void cli_reconnect(struct dubbo_client *cli);
 
 static struct buffer *cli_encode_req(struct dubbo_client *cli)
 {
@@ -74,9 +75,19 @@ static struct buffer *cli_encode_req(struct dubbo_client *cli)
     return dubbo_encode(req);
 }
 
+static void cli_clear_timer(struct dubbo_client *cli)
+{
+    if (cli->timerid != AE_NOMORE)
+    {
+        aeDeleteTimeEvent(cli->el, cli->timerid);
+        cli->timerid = AE_NOMORE;
+    }
+}
+
 static void cli_reset(struct dubbo_client *cli)
 {
     cli->connected = false;
+    cli_clear_timer(cli);
     cli->fd = -1;
     cli->pipe_left = cli->pipe_n;
     buf_retrieveAll(cli->rcv_buf);
@@ -93,13 +104,23 @@ static struct dubbo_client *cli_create(struct dubbo_args *args, struct dubbo_asy
 
     cli->rcv_buf = buf_create(CLI_INIT_BUF_SZ);
     cli->snd_buf = buf_create(CLI_INIT_BUF_SZ);
-    cli->pipe_n = async_args->pipe_n;
-    cli->pipe_left = async_args->pipe_n;
+
     cli->req_n = async_args->req_n;
     cli->req_left = async_args->req_n;
+
+    cli->pipe_n = async_args->pipe_n;
+    if (cli->pipe_n > cli->req_n)
+    {
+        cli->pipe_n = cli->req_n;
+    }
+    cli->pipe_left = async_args->pipe_n;
+
     cli->run = false;
     cli->ok_n = 0;
     cli->ko_n = 0;
+
+    cli->timeout_ms = args->timeout.tv_sec * 1000;
+    cli->timerid = AE_NOMORE;
 
     cli->args = args;
     cli_reset(cli);
@@ -116,12 +137,21 @@ static struct dubbo_client *cli_create(struct dubbo_args *args, struct dubbo_asy
 static bool cli_connected(struct dubbo_client *cli)
 {
     cli->connected = true;
+    cli_clear_timer(cli);
     if (AE_ERR == aeCreateFileEvent(cli->el, cli->fd, AE_READABLE, cli_on_read, cli))
     {
         return false;
     }
     cli_pipe_send(cli);
     return true;
+}
+
+int cli_connect_timeout(struct aeEventLoop *el, long long id, void *ud)
+{
+    struct dubbo_client *cli = (struct dubbo_client *)ud;
+    LOG_ERROR("连接超时");
+    cli_reconnect(cli);
+    return AE_NOMORE;
 }
 
 bool cli_connect(struct dubbo_client *cli)
@@ -148,6 +178,12 @@ bool cli_connect(struct dubbo_client *cli)
             // 这里 貌似应该 read + write
             if (AE_ERR == aeCreateFileEvent(cli->el, fd, AE_WRITABLE, cli_on_connect, cli))
             {
+                goto close;
+            }
+            cli->timerid = aeCreateTimeEvent(cli->el, cli->timeout_ms, cli_connect_timeout, cli, NULL);
+            if (AE_ERR == cli->timerid)
+            {
+                cli->timerid = AE_NOMORE;
                 goto close;
             }
         }
@@ -217,6 +253,7 @@ static void cli_end(struct dubbo_client *cli)
     if (cli->run)
     {
         cli_close(cli);
+        cli_clear_timer(cli);
 
         gettimeofday(&cli->end, NULL);
         g_cli = NULL;
@@ -235,7 +272,7 @@ static void cli_end(struct dubbo_client *cli)
 
 static void cli_reconnect(struct dubbo_client *cli)
 {
-    LOG_INFO("关闭异常连接并重连");
+    LOG_INFO("重新连接...");
     cli_close(cli);
     if (!cli_connect(cli))
     {
@@ -406,19 +443,22 @@ static void cli_on_read(struct aeEventLoop *el, int fd, void *ud, int mask)
         fprintf(stderr, "已发送请求 %d\n", cli->req_n - cli->req_left);
     }
 
+    bool ok = cli_decode_resp(cli);
+    
     if (cli->req_left <= 0)
     {
         cli_end(cli);
-        return;
-    }
-
-    if (cli_decode_resp(cli))
-    {
-        cli_pipe_send(cli);
     }
     else
     {
-        cli_reconnect(cli);
+        if (ok)
+        {
+            cli_pipe_send(cli);
+        }
+        else
+        {
+            cli_reconnect(cli);
+        }
     }
 }
 
@@ -454,25 +494,18 @@ static bool cli_decode_resp(struct dubbo_client *cli)
             memcpy(json, res->data, res->data_sz);
             json[res->data_sz] = '\0';
 
-            if (json[0] == '[' || json[0] == '{')
+            cJSON *resp = NULL;
+            if ((json[0] == '[' || json[0] == '{') && (resp = cJSON_Parse(json)))
             {
-                cJSON *resp = cJSON_Parse(json);
-                if (resp)
+                if (res->ok)
                 {
-                    if (res->ok)
-                    {
-                        printf("<res seq=%" PRId64 "> [\x1B[1;32mSUCC\x1B[0m] %s\n", res->reqid, cJSON_Print(resp));
-                    }
-                    else
-                    {
-                        printf("<res seq=%" PRId64 "> [\x1B[1;31mFAIL\x1B[0m] [\x1B[1;31m%s\x1B[0m] %s\n", res->reqid, res->desc, cJSON_Print(resp));
-                    }
-                    cJSON_Delete(resp);
+                    printf("<res seq=%" PRId64 "> [\x1B[1;32mSUCC\x1B[0m] %s\n", res->reqid, cJSON_Print(resp));
                 }
                 else
                 {
-                    printf("<res seq=%" PRId64 "> [\x1B[1;32mSUCC\x1B[0m] %s\n", res->reqid, json);
+                    printf("<res seq=%" PRId64 "> [\x1B[1;31mFAIL\x1B[0m] [\x1B[1;31m%s\x1B[0m] %s\n", res->reqid, res->desc, cJSON_Print(resp));
                 }
+                cJSON_Delete(resp);
             }
             else
             {
@@ -611,30 +644,30 @@ bool dubbo_invoke_sync(struct dubbo_args *args)
             memcpy(json, res->data, res->data_sz);
             json[res->data_sz] = '\0';
 
-            if (json[0] == '[' || json[0] == '{')
+            cJSON *resp = NULL;
+            if ((json[0] == '[' || json[0] == '{') && (resp = cJSON_Parse(json)))
             {
-                cJSON *resp = cJSON_Parse(json);
-                if (resp)
+                if (res->ok)
                 {
-                    if (res->ok)
-                    {
-                        printf("\x1B[1;32m%s\x1B[0m\n", cJSON_Print(resp));
-                    }
-                    else
-                    {
-                        printf("\x1B[1;31m%s\x1B[0m\n", res->desc);
-                        printf("\x1B[1;31m%s\x1B[0m\n", cJSON_Print(resp));
-                    }
-                    cJSON_Delete(resp);
+                    printf("\x1B[1;32m%s\x1B[0m\n", cJSON_Print(resp));
                 }
                 else
                 {
-                    printf("\x1B[1;32m%s\x1B[0m\n", json);
+                    printf("\x1B[1;31m%s\x1B[0m\n", res->desc);
+                    printf("\x1B[1;31m%s\x1B[0m\n", cJSON_Print(resp));
                 }
+                cJSON_Delete(resp);
             }
             else
             {
-                printf("\x1B[1;32m%s\x1B[0m\n", json);
+                if (res->ok)
+                {
+                    printf("\x1B[1;32m%s\x1B[0m\n", json);
+                }
+                else
+                {
+                    printf("\x1B[1;31m%s\x1B[0m\n", json);
+                }
             }
             free(json);
         }

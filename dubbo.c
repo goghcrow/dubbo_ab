@@ -74,7 +74,7 @@ int main(int argc, char **argv)
     struct dubbo_args args;
     memset(&args, 0, sizeof(args));
     args.attach = "{}";
-    args.timeout.tv_sec = 5;
+    args.timeout.tv_sec = 3;
     args.timeout.tv_usec = 0;
 
     int opt = 0;
