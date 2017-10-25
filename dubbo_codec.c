@@ -299,7 +299,7 @@ static bool encode_req(struct buffer *buf, const struct dubbo_req *req)
 
     hdr.reqid = req->reqid;
     hdr.status = 0;
-    hdr.flag = DUBBO_FLAG_REQ | DUBBO_HESSIAN2_SERI_ID;
+    hdr.flag = (int8_t)DUBBO_FLAG_REQ | (int8_t)DUBBO_HESSIAN2_SERI_ID;
     if (req->is_twoway)
     {
         hdr.flag |= DUBBO_FLAG_TWOWAY;
