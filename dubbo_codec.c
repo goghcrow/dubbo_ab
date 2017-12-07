@@ -454,10 +454,10 @@ struct dubbo_res *dubbo_decode(struct buffer *buf)
     }
 
     // 读取所有 body+attach
-    // fixme 做一个 buf_view...
-    struct buffer *body_buf = buf_create(hdr.body_sz);
+    // struct buffer *body_buf = buf_create(hdr.body_sz);
+    // buf_append(body_buf, buf_peek(buf), hdr.body_sz);
 
-    buf_append(body_buf, buf_peek(buf), hdr.body_sz);
+    struct buffer *body_buf = buf_readonlyView(buf, hdr.body_sz);
     buf_retrieve(buf, hdr.body_sz);
 
     struct dubbo_res *res = calloc(1, sizeof(*res));
@@ -484,7 +484,7 @@ bool is_dubbo_pkt(const struct buffer *buf)
     return buf_readable(buf) >= DUBBO_HDR_LEN && (uint16_t)buf_peekInt16(buf) == DUBBO_MAGIC;
 }
 
-// remaining 0: completed,  < 0, not completed
+// remaining 0: completed,  > 0, not completed
 bool is_completed_dubbo_pkt(const struct buffer *buf, int *remaining)
 {
     if (!is_dubbo_pkt(buf))

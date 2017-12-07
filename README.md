@@ -1,7 +1,15 @@
-## dubbo_ab
+## dubbo_ab beta
+
+dubbo 命令行 工具, 支持泛化调用 dubbo 服务, 支持简单 qps 测试;
 
 1. 支持 macOS 与 centos;
-2. Dubbo版本要求：bootstrap版本3.1.0.6-RC1，youzan boot版本1.0.2-GENERIC-INVOKE-SNAPSHOT
+2. java 依赖版本
+```
+        <haunt-client.version>3.0.9-RELEASE</haunt-client.version>
+        <bootstrap.version>3.1.2.2-RELEASE</bootstrap.version>
+        <dubbo.version>3.1.2.1-RELEASE</dubbo.version>
+
+```
 
 ```
 make

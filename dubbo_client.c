@@ -428,10 +428,17 @@ static void cli_on_read(struct aeEventLoop *el, int fd, void *ud, int mask)
     {
         LOG_ERROR("接收到非 dubbo 数据包");
         cli_reconnect(cli);
+        return;
     }
 
-    if (!is_completed_dubbo_pkt(cli->rcv_buf, NULL))
+    int remaining = 0;
+    if (!is_completed_dubbo_pkt(cli->rcv_buf, &remaining))
     {
+        LOG_ERROR("接收到异常 dubbo 数据包");
+        cli_reconnect(cli);
+        return;
+    }
+    if (remaining) {
         return;
     }
 
@@ -607,7 +614,7 @@ bool dubbo_invoke_sync(struct dubbo_args *args)
         goto release;
     }
 
-    while (remaining < 0)
+    while (remaining)
     {
         ssize_t recv_n = buf_readFd(buf, sockfd, &errno_);
         if (recv_n < 0)
@@ -622,7 +629,7 @@ bool dubbo_invoke_sync(struct dubbo_args *args)
                 goto release;
             }
         }
-        remaining += recv_n;
+        remaining -= recv_n;
     }
 
     {

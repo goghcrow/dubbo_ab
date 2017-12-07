@@ -513,7 +513,7 @@ static bool hs_decode_binary_chunk(struct buffer *buf, char **out, size_t *out_s
         *left = BIN_CHUNK_MAX;
     }
 
-    memcpy(*out, buf_peek(buf), sz);
+    memcpy(*out + *out_sz, buf_peek(buf), sz);
     *out_sz += sz;
     *left -= sz;
     buf_retrieve(buf, sz);
@@ -536,9 +536,9 @@ bool hs_decode_binary(struct buffer *buf, char **out, size_t *out_sz)
     if (tag >= 0x20 && tag <= 0x2f)
     {
         sz = tag - 0x20;
+        buf_retrieveInt8(buf);
         
         small:
-        buf_retrieveInt8(buf);
         *out_sz = sz;
         *out = malloc(sz + 1);
         if (*out == NULL)
@@ -551,7 +551,7 @@ bool hs_decode_binary(struct buffer *buf, char **out, size_t *out_sz)
     }
     else if (tag >= 0x34 && tag <= 0x37)
     {
-        uint16_t sz = buf_readInt16(buf);
+        sz = buf_readInt16(buf);
         sz = sz & 1023; // 10 bit number !!!
         goto small;
     }
@@ -586,6 +586,6 @@ bool hs_decode_binary(struct buffer *buf, char **out, size_t *out_sz)
             return false;
         }
     }
-    *out[*out_sz] = 0;
+    (*out)[*out_sz] = '\0';
     return true;
 }
