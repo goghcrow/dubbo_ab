@@ -20,6 +20,7 @@ public interface GenericService {
      *
     Object $invoke(String method, String[] parameterTypes, Object[] args) throws GenericException;
 
+    废弃
     **
      * (支持)
      * 泛化调用，方法参数和返回结果使用json序列化，方法参数的key从arg0开始
@@ -30,8 +31,22 @@ public interface GenericService {
      * @throws GenericException
      *
     String $invokeWithJsonArgs(String method, String[] parameterTypes, String jsonArgs) throws GenericException;
+
+    崩溃, 又换了一种实现
+    **
+     * 泛化调用，方法参数和返回结果使用json byte[]
+     * @param method
+     * @param parameterTypes
+     * @param jsonArgs
+     * @return
+     * @throws GenericException
+     *
+    byte[] $invokeWithJsonArgs(String method, String[] parameterTypes, byte[] jsonArgs);
 }
 */
+
+/* binary 泛化实现 */
+#define DUBBO_BYTE_CODEC
 
 #define DUBBO_RES_EX 0
 #define DUBBO_RES_VAL 1

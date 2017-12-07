@@ -4,6 +4,7 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include "buffer.h"
 
 char *utf82ascii(char *s);
 size_t utf8len(const char *s, size_t sz);
@@ -18,4 +19,6 @@ bool hs_decode_int(const uint8_t *buf, size_t sz, int32_t *out);
 int hs_encode_string(const char *str, uint8_t *out);
 bool hs_decode_string(const uint8_t *buf, size_t sz, char **out, size_t *out_sz);
 
+void hs_encode_binary(const char *bin, size_t sz, struct buffer *out_buf);
+bool hs_decode_binary(struct buffer *buf, char **out, size_t *out_sz);
 #endif

@@ -10,6 +10,104 @@
 #include "buffer.h"
 #include "lib/utf8_decode.h"
 
+// 一定要看这个链接的文档, 小心其他文档 !!!
+// http://hessian.caucho.com/doc/hessian-serialization.html
+/*
+top        ::= value
+
+           # 8-bit binary data split into 64k chunks
+binary     ::= x41 b1 b0 <binary-data> binary # non-final chunk
+           ::= 'B' b1 b0 <binary-data>        # final chunk
+           ::= [x20-x2f] <binary-data>        # binary data of
+                                                 #  length 0-15
+           ::= [x34-x37] <binary-data>        # binary data of
+                                                 #  length 0-1023
+
+           # boolean true/false
+boolean    ::= 'T'
+           ::= 'F'
+
+           # definition for an object (compact map)
+class-def  ::= 'C' string int string*
+
+           # time in UTC encoded as 64-bit long milliseconds since
+           #  epoch
+date       ::= x4a b7 b6 b5 b4 b3 b2 b1 b0
+           ::= x4b b3 b2 b1 b0       # minutes since epoch
+
+           # 64-bit IEEE double
+double     ::= 'D' b7 b6 b5 b4 b3 b2 b1 b0
+           ::= x5b                   # 0.0
+           ::= x5c                   # 1.0
+           ::= x5d b0                # byte cast to double
+                                     #  (-128.0 to 127.0)
+           ::= x5e b1 b0             # short cast to double
+           ::= x5f b3 b2 b1 b0       # 32-bit float cast to double
+
+           # 32-bit signed integer
+int        ::= 'I' b3 b2 b1 b0
+           ::= [x80-xbf]             # -x10 to x3f
+           ::= [xc0-xcf] b0          # -x800 to x7ff
+           ::= [xd0-xd7] b1 b0       # -x40000 to x3ffff
+
+           # list/vector
+list       ::= x55 type value* 'Z'   # variable-length list
+    ::= 'V' type int value*   # fixed-length list
+           ::= x57 value* 'Z'        # variable-length untyped list
+           ::= x58 int value*        # fixed-length untyped list
+    ::= [x70-77] type value*  # fixed-length typed list
+    ::= [x78-7f] value*       # fixed-length untyped list
+
+           # 64-bit signed long integer
+long       ::= 'L' b7 b6 b5 b4 b3 b2 b1 b0
+           ::= [xd8-xef]             # -x08 to x0f
+           ::= [xf0-xff] b0          # -x800 to x7ff
+           ::= [x38-x3f] b1 b0       # -x40000 to x3ffff
+           ::= x59 b3 b2 b1 b0       # 32-bit integer cast to long
+
+           # map/object
+map        ::= 'M' type (value value)* 'Z'  # key, value map pairs
+    ::= 'H' (value value)* 'Z'       # untyped key, value
+
+           # null value
+null       ::= 'N'
+
+           # Object instance
+object     ::= 'O' int value*
+    ::= [x60-x6f] value*
+
+           # value reference (e.g. circular trees and graphs)
+ref        ::= x51 int            # reference to nth map/list/object
+
+           # UTF-8 encoded character string split into 64k chunks
+string     ::= x52 b1 b0 <utf8-data> string  # non-final chunk
+           ::= 'S' b1 b0 <utf8-data>         # string of length
+                                             #  0-65535
+           ::= [x00-x1f] <utf8-data>         # string of length
+                                             #  0-31
+           ::= [x30-x34] <utf8-data>         # string of length
+                                             #  0-1023
+
+           # map/list types for OO languages
+type       ::= string                        # type name
+           ::= int                           # type reference
+
+           # main production
+value      ::= null
+           ::= binary
+           ::= boolean
+           ::= class-def value
+           ::= date
+           ::= double
+           ::= int
+           ::= list
+           ::= long
+           ::= map
+           ::= object
+           ::= ref
+           ::= string
+*/
+
 static const char digits[] = "0123456789abcdef";
 
 // 非法 utf8 返回 null, 正常返回 null 结尾 char*
@@ -69,7 +167,6 @@ size_t utf8len(const char *s, size_t sz)
 {
     size_t len = 0;
     size_t i = 0;
-    // for (; *s; ++s)
     for (; i < sz; i++)
     {
         if ((*s & 0xC0) != 0x80)
@@ -377,4 +474,118 @@ bool hs_decode_string(const uint8_t *buf, size_t sz, char **out, size_t *out_sz)
         free(out_str);
         return false;
     }
+}
+
+/* 64k */
+#define BIN_CHUNK_MAX 0x10000
+
+void hs_encode_binary(const char *bin, size_t sz, struct buffer *out_buf)
+{
+    // 不做判断, 最后一块体积填0 ?!
+    // int just_right = sz % chunk_max == 0;
+    while (sz > BIN_CHUNK_MAX)
+    {
+        buf_appendInt8(out_buf, 'b');
+        buf_appendInt16(out_buf, (uint16_t)BIN_CHUNK_MAX);
+        buf_append(out_buf, bin, BIN_CHUNK_MAX);
+        bin += BIN_CHUNK_MAX;
+        sz -= BIN_CHUNK_MAX;
+    }
+    buf_appendInt8(out_buf, 'B');
+    buf_appendInt16(out_buf, sz);
+    if (sz)
+    {
+        buf_append(out_buf, bin, sz);
+    }
+}
+
+static bool hs_decode_binary_chunk(struct buffer *buf, char **out, size_t *out_sz, size_t *left)
+{
+    int sz = buf_readInt16(buf);
+    if (*left < sz)
+    {
+        char *new_out = realloc(*out, *out_sz + BIN_CHUNK_MAX + 1);
+        if (new_out == NULL)
+        {
+            return false;
+        }
+        *out = new_out;
+        *left = BIN_CHUNK_MAX;
+    }
+
+    memcpy(*out, buf_peek(buf), sz);
+    *out_sz += sz;
+    *left -= sz;
+    buf_retrieve(buf, sz);
+    return true;
+}
+
+/*
+           # 8-bit binary data split into 64k chunks
+binary     ::= x41 b1 b0 <binary-data> binary # non-final chunk
+           ::= 'B' b1 b0 <binary-data>        # final chunk
+           ::= [x20-x2f] <binary-data>        # binary data of
+                                                 #  length 0-15
+           ::= [x34-x37] <binary-data>        # binary data of
+                                                 #  length 0-1023
+*/
+bool hs_decode_binary(struct buffer *buf, char **out, size_t *out_sz)
+{
+    uint16_t tag = buf_peekInt8(buf);
+    uint16_t sz = 0;
+    if (tag >= 0x20 && tag <= 0x2f)
+    {
+        sz = tag - 0x20;
+        
+        small:
+        buf_retrieveInt8(buf);
+        *out_sz = sz;
+        *out = malloc(sz + 1);
+        if (*out == NULL)
+        {
+            return false;
+        }
+        memcpy(*out, buf_peek(buf), sz);
+        buf_retrieve(buf, sz);
+        return true;
+    }
+    else if (tag >= 0x34 && tag <= 0x37)
+    {
+        uint16_t sz = buf_readInt16(buf);
+        sz = sz & 1023; // 10 bit number !!!
+        goto small;
+    }
+    else
+    {
+        buf_retrieveInt8(buf);
+
+        size_t left = BIN_CHUNK_MAX;
+        *out_sz = 0;
+        *out = malloc(BIN_CHUNK_MAX + 1);
+        if (*out == NULL)
+        {
+            return false;
+        }
+
+        while (tag == 0x41)
+        {
+            if (!hs_decode_binary_chunk(buf, out, out_sz, &left))
+            {
+                free(*out);
+                *out = NULL;
+                return false;
+            }
+            tag = buf_readInt8(buf);
+        }
+
+        assert(tag == 'B');
+        if (!hs_decode_binary_chunk(buf, out, out_sz, &left))
+        {
+            free(*out);
+            *out = NULL;
+            return false;
+        }
+    }
+    *out[*out_sz] = 0;
+    return true;
 }

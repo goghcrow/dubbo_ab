@@ -107,6 +107,16 @@ void buf_unwrite(struct buffer *buf, size_t len)
     buf->write_idx -= len;
 }
 
+const char *buf_findStr(struct buffer *buf, const char* str)
+{
+    return (char *)memmem(buf_peek(buf), buf_readable(buf), str, strlen(str));
+}
+
+const char *buf_findChar(struct buffer *buf, const char c)
+{
+    return (char *)memchr(buf_peek(buf), c, buf_readable(buf));
+}
+
 const char *buf_findCRLF(struct buffer *buf)
 {
     return (char *)memmem(buf_peek(buf), buf_readable(buf), "\r\n", 2);

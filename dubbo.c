@@ -32,7 +32,7 @@ usage()
         "\nUsage:\n"
         "   dubbo_test -h<HOST> -p<PORT> -m<METHOD> -a<JSON_ARGUMENTS> [-e<JSON_ATTACHMENT='{}'> -t<TIMEOUT_SEC=5> -c<CONCURRENCY> -n<REQUESTS> -v<VERBOS>]\n\n"
         "Example:\n"
-        "   dubbo_test -h10.9.172.41  -p 20983  -mcom.youzan.generic.service.DemoService.complexMethod -a '[true,1,3.1400000000000001,\"hello\",{\"propBool\":null,\"propByte\":null,\"propI16\":null,\"propI32\":null,\"propI64\":null,\"propDouble\":null,\"propString\":null,\"errorLevel\":null},[{\"propBool\":null,\"propByte\":null,\"propI16\":null,\"propI32\":null,\"propI64\":null,\"propDouble\":null,\"propString\":null,\"errorLevel\":null},{\"propBool\":null,\"propByte\":null,\"propI16\":null,\"propI32\":null,\"propI64\":null,\"propDouble\":null,\"propString\":null,\"errorLevel\":null}],[{\"propBool\":null,\"propByte\":null,\"propI16\":null,\"propI32\":null,\"propI64\":null,\"propDouble\":null,\"propString\":null,\"errorLevel\":null},{\"propBool\":null,\"propByte\":null,\"propI16\":null,\"propI32\":null,\"propI64\":null,\"propDouble\":null,\"propString\":null,\"errorLevel\":null}],{\"hello\":{\"propBool\":null,\"propByte\":null,\"propI16\":null,\"propI32\":null,\"propI64\":null,\"propDouble\":null,\"propString\":null,\"errorLevel\":null}},\"WARN\"]'\n";
+        "   ./dubbo_test -h10.215.21.21 -p20983 -mcom.youzan.generic.service.DemoService.complexMethod -a'[true,42,3.14,\"hello\",{}, [],[],{},\"DEBUG\"]'\n";
     puts(usage);
     exit(1);
 }

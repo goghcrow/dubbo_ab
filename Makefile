@@ -5,7 +5,7 @@ dubbo_test: $(FILES)
 	$(CC) -D_GNU_SOURCE -std=gnu99 -g -Wall -o $@ $^
 
 dubbo_debug: $(FILES)
-	$(CC) -D_GNU_SOURCE -std=gnu99 -g3 -O0 -Wall $(ASAN_FLAGS) -o $@ $^
+	$(CC) -fsanitize=address -fno-omit-frame-pointer -D_GNU_SOURCE -std=gnu99 -g3 -O0 -Wall $(ASAN_FLAGS) -o $@ $^
 
 .PHONY: clean
 clean:

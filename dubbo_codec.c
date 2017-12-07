@@ -34,7 +34,11 @@ public interface GenericService {
 */
 #define DUBBO_GENERIC_METHOD_NAME "$invokeWithJsonArgs"
 #define DUBBO_GENERIC_METHOD_VER "0.0.0"
+#ifdef DUBBO_BYTE_CODEC
+#define DUBBO_GENERIC_METHOD_PARA_TYPES "Ljava/lang/String;[Ljava/lang/String;[B;"
+#else
 #define DUBBO_GENERIC_METHOD_PARA_TYPES "Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;"
+#endif
 #define DUBBO_GENERIC_METHOD_ARGC 3
 #define DUBBO_GENERIC_METHOD_ARGV_METHOD_IDX 0
 #define DUBBO_GENERIC_METHOD_ARGV_TYPES_IDX 1
@@ -229,9 +233,14 @@ static bool encode_req_data(struct buffer *buf, const struct dubbo_req *req)
     // args
     write_hs_str(buf, req->argv[DUBBO_GENERIC_METHOD_ARGV_METHOD_IDX]);
     buf_has_written(buf, hs_encode_null((uint8_t *)buf_beginWrite(buf))); // 方法类型提示 NULL, 不支持重载方法
+#ifdef DUBBO_BYTE_CODEC
+    const char *args = req->argv[DUBBO_GENERIC_METHOD_ARGV_ARGS_IDX];
+    hs_encode_binary(args, strlen(args), buf);
+#else
     write_hs_str(buf, req->argv[DUBBO_GENERIC_METHOD_ARGV_ARGS_IDX]);
+#endif
 
-    // fixme :  attach NULL
+    // TODO: fixme :  attach NULL
     buf_has_written(buf, hs_encode_null((uint8_t *)buf_beginWrite(buf)));
 
     return true;
@@ -264,7 +273,11 @@ static bool decode_res_data(struct buffer *buf, const struct dubbo_hdr *hdr, str
         read_hs_str(buf, &res->data, &res->data_sz);
         break;
     case DUBBO_RES_VAL:
+#ifdef DUBBO_BYTE_CODEC
+        hs_decode_binary(buf, &res->data, &res->data_sz);
+#else
         read_hs_str(buf, &res->data, &res->data_sz);
+#endif
         break;
     default:
         LOG_ERROR("unknown result flag, expect '0' '1' '2', get %d", res->type);
