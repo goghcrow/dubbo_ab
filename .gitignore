@@ -2,5 +2,6 @@
 *.dSYM
 .DS_Store
 */.DS_Store
+dubbo
 dubbo_test
 dubbo_debug
