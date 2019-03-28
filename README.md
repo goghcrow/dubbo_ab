@@ -11,6 +11,16 @@ dubbo 命令行 工具, 支持泛化调用 dubbo 服务, 支持简单 qps 测试
 
 ```
 
+
+3. 如果 mac 环境编译有循环引用问题
+
+```shell
+brew unlink libunistring
+brew uninstall libunistring
+Make sure /usr/local/include/stdint.h is gone, and delete it if necessary (I think it is)
+brew install libunistring
+```
+
 编译使用
 
 ```
